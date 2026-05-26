@@ -11,7 +11,7 @@ from .log_parser import SUSPICIOUS_TERMS
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(BASE_DIR, "ml_model")
-MODEL_PATH = os.path.join(MODEL_DIR, "attack_detection_model.h5")
+MODEL_PATH = os.path.join(MODEL_DIR, "attack_detection_model.tflite")
 SCALER_PATH = os.path.join(MODEL_DIR, "scaler.pkl")
 
 
@@ -38,8 +38,8 @@ class LstmRiskScorer(RiskScorer):
             raw_array = np.array(parsed_log.features, dtype=np.float32).reshape(1, -1)
             scaled = self._cached_scaler.transform(raw_array)
             reshaped = scaled.reshape(1, 1, 11)
-            score = float(self._cached_model.predict(reshaped, verbose=0)[0][0])
-            return {"score": round(score, 4), "source": "lstm_model", "error": None}
+            score = self._predict(reshaped)[0]
+            return {"score": round(float(score), 4), "source": "tflite_lstm_model", "error": None}
         except Exception as exc:
             return {"score": None, "source": "heuristic", "error": str(exc)}
 
@@ -53,8 +53,8 @@ class LstmRiskScorer(RiskScorer):
             raw_array = np.array([parsed_log.features for parsed_log in parsed_logs], dtype=np.float32)
             scaled = self._cached_scaler.transform(raw_array)
             reshaped = scaled.reshape(len(parsed_logs), 1, 11)
-            predictions = self._cached_model.predict(reshaped, verbose=0).reshape(-1)
-            return [{"score": round(float(score), 4), "source": "lstm_model", "error": None} for score in predictions]
+            predictions = self._predict(reshaped)
+            return [{"score": round(float(score), 4), "source": "tflite_lstm_model", "error": None} for score in predictions]
         except Exception as exc:
             return [{"score": None, "source": "heuristic", "error": str(exc)} for _ in parsed_logs]
 
@@ -63,15 +63,34 @@ class LstmRiskScorer(RiskScorer):
             return True
 
         try:
-            from tensorflow.keras.models import load_model
+            try:
+                from tflite_runtime.interpreter import Interpreter
+            except ImportError:
+                from tensorflow.lite.python.interpreter import Interpreter
 
             LstmRiskScorer._cached_scaler = joblib.load(self.scaler_path)
-            LstmRiskScorer._cached_model = load_model(self.model_path, compile=False)
+            LstmRiskScorer._cached_model = Interpreter(model_path=self.model_path)
+            LstmRiskScorer._cached_model.allocate_tensors()
             LstmRiskScorer._cached_error = None
             return True
         except Exception as exc:
             LstmRiskScorer._cached_error = str(exc)
             return False
+
+    def _predict(self, batch: np.ndarray) -> np.ndarray:
+        interpreter = self._cached_model
+        input_details = interpreter.get_input_details()[0]
+        output_details = interpreter.get_output_details()[0]
+
+        if list(input_details["shape"]) != list(batch.shape):
+            interpreter.resize_tensor_input(input_details["index"], batch.shape, strict=False)
+            interpreter.allocate_tensors()
+            input_details = interpreter.get_input_details()[0]
+            output_details = interpreter.get_output_details()[0]
+
+        interpreter.set_tensor(input_details["index"], batch.astype(np.float32))
+        interpreter.invoke()
+        return interpreter.get_tensor(output_details["index"]).reshape(-1)
 
 
 class HeuristicRiskScorer(RiskScorer):

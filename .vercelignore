@@ -1,0 +1,18 @@
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+
+# Local/generated runtime data should not be bundled into the serverless function.
+data/*.db
+data/*.log
+server.err.log
+server.out.log
+
+# Training and offline inference artifacts are not needed for the Vercel web app.
+ml_model/*.h5
+ml_model/*.npy
+ml_model/forensic_scaler.pkl
+scripts/
+docs/
