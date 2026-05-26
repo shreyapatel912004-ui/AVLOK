@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 from datetime import timedelta
 from functools import wraps
@@ -22,8 +23,10 @@ from backend.user_repository import UserRepository
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "data" / "forensics.db"
-AUDIT_LOG_PATH = BASE_DIR / "data" / "audit.log"
+DEFAULT_DATA_DIR = Path(tempfile.gettempdir()) / "avlok" if os.environ.get("VERCEL") else BASE_DIR / "data"
+DATA_DIR = Path(os.environ.get("AVLOK_DATA_DIR", DEFAULT_DATA_DIR))
+DB_PATH = DATA_DIR / "forensics.db"
+AUDIT_LOG_PATH = DATA_DIR / "audit.log"
 
 repository = LogRepository(DB_PATH)
 user_repository = UserRepository(DB_PATH)
@@ -88,6 +91,9 @@ def init_db():
     repository.initialize()
     user_repository.initialize()
     user_repository.ensure_default_users()
+
+
+init_db()
 
 
 def request_filters():
