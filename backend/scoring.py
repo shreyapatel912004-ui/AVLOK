@@ -64,9 +64,12 @@ class LstmRiskScorer(RiskScorer):
 
         try:
             try:
-                from tflite_runtime.interpreter import Interpreter
+                from ai_edge_litert.interpreter import Interpreter
             except ImportError:
-                from tensorflow.lite.python.interpreter import Interpreter
+                try:
+                    from tflite_runtime.interpreter import Interpreter
+                except ImportError:
+                    from tensorflow.lite.python.interpreter import Interpreter
 
             LstmRiskScorer._cached_scaler = joblib.load(self.scaler_path)
             LstmRiskScorer._cached_model = Interpreter(model_path=self.model_path)
